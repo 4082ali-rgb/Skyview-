@@ -284,7 +284,7 @@ def write_csv(path, lines, journal_no, date, memo):
         w = csv.writer(f, lineterminator="\r\n")
         w.writerow(HEADER)
         for l in lines:
-            w.writerow([journal_no, date.strftime("%d-%m-%Y"), memo, l["account"],
+            w.writerow([f"JJ{journal_no}", date.strftime("%d-%m-%Y"), memo, l["account"],
                         f"{l['amount']:.2f}" if l["side"] == "debit" else "",
                         f"{l['amount']:.2f}" if l["side"] == "credit" else "",
                         l["desc"], "", "", l["cls"]])
