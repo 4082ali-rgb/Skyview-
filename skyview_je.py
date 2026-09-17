@@ -356,6 +356,9 @@ def pick_journal(args, state, flags):
                          f"JJ{n} is the new baseline.")
         return n
     if args.auto or state.get("auto_increment"):
+        if last is not None and state.get("last_date") == str(pick_journal.date):
+            flags.append(f"Re-run of {state['last_date']}: reused JJ{last} instead of counting up")
+            return last
         if last is None:
             raise Stop("Auto-increment is on but no previous journal number is recorded. "
                        "Run once with --journal NNNN.")
@@ -408,6 +411,7 @@ def main(argv=None):
         memo = f"Skyview Daily Revenue {date.strftime('%d %B %Y')}"
 
         state = load_state(args.state)
+        pick_journal.date = date
         journal_no = pick_journal(args, state, flags)
 
         lines = build_lines(gl, tb, memo, flags)
