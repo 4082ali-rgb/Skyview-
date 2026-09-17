@@ -13,3 +13,5 @@ If it says `STOP:` nothing was written. Read the message, fix the input, and run
 To change the journal number: double-click **SET JOURNAL NUMBER**, type the number the next entry should use, Enter.
 
 If a new account shows up on a report, the window asks which QuickBooks account to use. Type it exactly as it is in QBO and press Enter. It is saved in `extra_accounts.json` and never asked again. Press Enter with nothing to stop instead.
+
+If Claude fixes something, double-click **UPDATE** to get the new version. Your PDFs, journal number and saved accounts are untouched.

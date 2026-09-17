@@ -144,8 +144,12 @@ def parse_trial_balance(text):
     if totals is None:
         raise Stop("Trial Balance: could not find the 'Trial Balance Total' line.")
     for a, r in rows.items():
-        if (r["debit"] is None) == (r["credit"] is None):
-            raise Stop(f"Trial Balance: account {a} has both or neither of Debits/Credits filled. Cannot read its side.")
+        if r["debit"] is None and r["credit"] is None:
+            if r["group"] != 0:
+                raise Stop(f"Trial Balance: account {a} shows no Debits or Credits but a group total of {r['group']}.")
+            r["debit"] = Decimal(0)  # a $0.00 row; it will be omitted from the JE
+        elif r["debit"] is not None and r["credit"] is not None:
+            raise Stop(f"Trial Balance: account {a} has both Debits and Credits filled. Cannot read its side.")
     return date, rows, totals
 
 
@@ -174,7 +178,8 @@ def cross_check(gl_date, gl, tb_date, tb, tb_totals):
             problems.append(f"account {a}: GL Summary total {gl[a]['total']} vs Trial Balance {tb[a]['group']}")
     if problems:
         raise Stop("GL Summary and Trial Balance do not agree:\n  - " + "\n  - ".join(problems))
-    unmapped = [a for a in gl if a not in ACCOUNTS and a not in (BANK, CAMIS_ACCOUNT)]
+    unmapped = [a for a in gl if a not in ACCOUNTS and a not in (BANK, CAMIS_ACCOUNT)
+                and gl[a]["total"] != 0]
     for a in unmapped:
         ask_mapping(a, gl[a]["name"])
 
@@ -264,13 +269,15 @@ def build_lines(gl, tb, memo, flags):
         for desc, _, amt in gl[a]["items"]:
             if desc == CAMIS_DESC and a in (CAMIS_ACCOUNT, "4140"):
                 camis_amount += amt
-            elif desc == CAMIS_DESC or (a == CAMIS_ACCOUNT) or \
-                    ("additional party" in desc.lower() or "3rd v" in desc.lower()):
+            elif a == CAMIS_ACCOUNT or (a == "4140" and "additional party" in desc.lower()):
                 raise Stop(f"Item '{desc}' under account {a} looks like the CAMIS class-split "
                            f"case but is not an exact match to '{CAMIS_DESC}' under 4130/4140. Ask Imran.")
 
     # Every other account, side straight from the TB.
     for a in [x for x in tb if x != BANK]:
+        if a not in ACCOUNTS and a != CAMIS_ACCOUNT:
+            flags.append(f"Zero-dollar category omitted: {a} {tb[a]['name']} (not in the account list)")
+            continue
         if a == CAMIS_ACCOUNT:
             side, amt = side_of(tb[a])
             add("3033 Camping", side, amt, "Camping", cls=CLASS_CAMIS)
