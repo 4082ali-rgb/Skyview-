@@ -10,7 +10,7 @@ import pytest
 
 HERE = os.path.dirname(__file__)
 SCRIPT = os.path.join(HERE, "..", "skyview_je.py")
-DAYS = sorted(d for d in glob.glob(os.path.join(HERE, "*")) if os.path.isdir(d))
+DAYS = sorted(d for d in glob.glob(os.path.join(HERE, "*")) if os.path.isdir(d) and glob.glob(os.path.join(d, "expected_JJ*.csv")))
 
 
 @pytest.mark.parametrize("day", DAYS, ids=os.path.basename)
