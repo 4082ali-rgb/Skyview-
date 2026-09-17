@@ -56,6 +56,7 @@ CAMIS_ACCOUNT = "4130"
 CLASS_DEFAULT = "0052-SKYVIEW"
 CLASS_CAMIS = "0050-MANNING PARKS"
 STATE_FILE = "skyview_je_state.json"
+EXTRA_ACCOUNTS_FILE = "extra_accounts.json"  # accounts Imran added by answering the prompt
 HEADER = ["*JournalNo", "*JournalDate", "Memo", "*AccountName", "Debits",
           "Credits", "Description", "Name", "Location", "Class"]
 
@@ -173,11 +174,44 @@ def cross_check(gl_date, gl, tb_date, tb, tb_totals):
             problems.append(f"account {a}: GL Summary total {gl[a]['total']} vs Trial Balance {tb[a]['group']}")
     if problems:
         raise Stop("GL Summary and Trial Balance do not agree:\n  - " + "\n  - ".join(problems))
-    unmapped = [f"{a} - {gl[a]['name']}" for a in gl
-                if a not in ACCOUNTS and a not in (BANK, CAMIS_ACCOUNT)]
-    if unmapped:
-        raise Stop("Unmapped GL account(s), ask Imran which QBO account they map to:\n  - "
-                   + "\n  - ".join(unmapped))
+    unmapped = [a for a in gl if a not in ACCOUNTS and a not in (BANK, CAMIS_ACCOUNT)]
+    for a in unmapped:
+        ask_mapping(a, gl[a]["name"])
+
+
+def load_extra_accounts(folder):
+    p = os.path.join(folder, EXTRA_ACCOUNTS_FILE)
+    if os.path.exists(p):
+        with open(p) as f:
+            for k, v in json.load(f).items():
+                ACCOUNTS[k] = (v["qbo"], v.get("prefix"))
+
+
+def ask_mapping(acct, name):
+    """New GL account: ask in the window, remember the answer in extra_accounts.json."""
+    if not sys.stdin.isatty():
+        raise Stop(f"Unmapped GL account: {acct} - {name}. Ask Imran which QBO account it maps to.")
+    print()
+    print(f"NEW ACCOUNT on today's report: {acct} - {name}")
+    print("Type the QuickBooks account exactly as it appears in QBO, e.g.  3001 Revenue")
+    print("(press Enter with nothing to stop and decide later)")
+    qbo = input("QuickBooks account: ").strip()
+    if not qbo:
+        raise Stop(f"Unmapped GL account {acct} - {name}. Nothing saved; run again when you know the account.")
+    prefix = input(f"Description prefix [{name}]: ").strip() or name
+    if "," in qbo or "," in prefix:
+        raise Stop("No commas allowed in the account name or prefix.")
+    ACCOUNTS[acct] = (qbo, prefix)
+    p = os.path.join(ask_mapping.folder, EXTRA_ACCOUNTS_FILE)
+    data = {}
+    if os.path.exists(p):
+        with open(p) as f:
+            data = json.load(f)
+    data[acct] = {"name": name, "qbo": qbo, "prefix": prefix}
+    with open(p, "w") as f:
+        json.dump(data, f, indent=2)
+    print(f"Saved: {acct} {name} -> {qbo} (prefix '{prefix}'). To change it later edit {EXTRA_ACCOUNTS_FILE}.")
+    print()
 
 
 # ------------------------------------------------------------------- build
@@ -352,6 +386,8 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     flags = []
+    load_extra_accounts(args.out_dir)
+    ask_mapping.folder = args.out_dir
     try:
         if not args.gl_pdf:
             args.gl_pdf = newest("GLSummary*.pdf", args.out_dir)
