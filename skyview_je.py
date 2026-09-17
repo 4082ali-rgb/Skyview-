@@ -306,9 +306,16 @@ def build_lines(gl, tb, memo, flags):
 def balance(lines, tb_total):
     dr = sum(l["amount"] for l in lines if l["side"] == "debit")
     cr = sum(l["amount"] for l in lines if l["side"] == "credit")
-    if dr != cr or dr != tb_total:
+    # The TB nets all tenders into one 1060 figure. The JE shows each tender on its
+    # own side, so when one tender is a net refund the JE total is grossed up by it.
+    tender_accts = {v[0] for v in TENDERS.values()}
+    t_dr = sum(l["amount"] for l in lines if l["side"] == "debit" and l["account"] in tender_accts)
+    t_cr = sum(l["amount"] for l in lines if l["side"] == "credit" and l["account"] in tender_accts)
+    expected = tb_total + min(t_dr, t_cr)
+    if dr != cr or dr != expected:
         detail = "\n".join(f"  {l['side']:6} {l['amount']:>10}  {l['account']}  {l['desc']}" for l in lines)
-        raise Stop(f"JE does not balance. Debits {dr}, Credits {cr}, Trial Balance total {tb_total}.\n"
+        raise Stop(f"JE does not balance. Debits {dr}, Credits {cr}, expected {expected} "
+                   f"(Trial Balance total {tb_total} plus {min(t_dr, t_cr)} of net-refund tenders).\n"
                    f"Lines included:\n{detail}")
     return dr, cr
 
