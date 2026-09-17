@@ -319,15 +319,32 @@ def pick_journal(args, state, flags):
             raise Stop("Auto-increment is on but no previous journal number is recorded. "
                        "Run once with --journal NNNN.")
         return last + 1
+    if sys.stdin.isatty():
+        hint = f" (last used JJ{last})" if last else ""
+        ans = input(f"Journal number for this entry{hint}, digits only: ").strip().upper().replace("JJ", "")
+        if ans.isdigit():
+            n = int(ans)
+            if last is not None and n != last + 1:
+                flags.append(f"Journal number gap: last used JJ{last}, this entry uses JJ{n}. JJ{n} is the new baseline.")
+            state["auto_increment"] = True
+            return n
     raise Stop("No journal number given. Use --journal NNNN, or --auto to keep incrementing "
                "from the last one used.")
+
+
+def newest(pattern, folder):
+    import glob
+    files = glob.glob(os.path.join(folder, pattern))
+    if not files:
+        raise Stop(f"No file matching {pattern} in {os.path.abspath(folder)}. Put today's PDF there.")
+    return max(files, key=os.path.getmtime)
 
 
 # --------------------------------------------------------------------- main
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("gl_pdf")
-    ap.add_argument("tb_pdf")
+    ap.add_argument("gl_pdf", nargs="?", help="GL Summary PDF (default: newest GLSummary*.pdf here)")
+    ap.add_argument("tb_pdf", nargs="?", help="Trial Balance PDF (default: newest TrialBalance*.pdf here)")
     ap.add_argument("--journal", type=int, help="journal number, digits only (e.g. 3528)")
     ap.add_argument("--auto", action="store_true", help="turn on auto-increment from now on")
     ap.add_argument("--out-dir", default=".")
@@ -336,6 +353,11 @@ def main(argv=None):
 
     flags = []
     try:
+        if not args.gl_pdf:
+            args.gl_pdf = newest("GLSummary*.pdf", args.out_dir)
+        if not args.tb_pdf:
+            args.tb_pdf = newest("TrialBalance*.pdf", args.out_dir)
+        print(f"Using {os.path.basename(args.gl_pdf)} and {os.path.basename(args.tb_pdf)}")
         gl_date, gl = parse_gl_summary(pdf_text(args.gl_pdf))
         tb_date, tb, tb_totals = parse_trial_balance(pdf_text(args.tb_pdf))
         cross_check(gl_date, gl, tb_date, tb, tb_totals)
