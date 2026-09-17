@@ -9,3 +9,5 @@ Every day:
 4. Import the `JJ####_Skyview_MonDD.csv` it creates into QuickBooks.
 
 If it says `STOP:` nothing was written. Read the message, fix the input, and run again.
+
+To change the journal number: double-click **SET JOURNAL NUMBER**, type the number the next entry should use, Enter.
