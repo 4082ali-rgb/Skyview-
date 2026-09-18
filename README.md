@@ -14,7 +14,7 @@ To change the journal number: double-click **SET JOURNAL NUMBER**, type the numb
 
 If something on the report is not recognised (a new account, an unknown tender, an unusual CAMIS item), the file is still written. That amount goes to `3001 Revenue` with **CHECK** at the start of the description, and the window prints a CHECK flag. Fix that one line in QuickBooks after import.
 
-To make a new account permanent, open `extra_accounts.json` in Notepad (create it if missing) and add a line like:
+To make a new account permanent, double-click **ADD ACCOUNT** and answer the three questions. (It writes `extra_accounts.json`, which looks like this:)
 
     {"4550": {"qbo": "3022 Revenue - Firewood", "prefix": "Firewood"}}
 
