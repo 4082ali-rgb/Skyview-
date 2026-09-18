@@ -178,45 +178,21 @@ def cross_check(gl_date, gl, tb_date, tb, tb_totals):
             problems.append(f"account {a}: GL Summary total {gl[a]['total']} vs Trial Balance {tb[a]['group']}")
     if problems:
         raise Stop("GL Summary and Trial Balance do not agree:\n  - " + "\n  - ".join(problems))
-    unmapped = [a for a in gl if a not in ACCOUNTS and a not in (BANK, CAMIS_ACCOUNT)
-                and gl[a]["total"] != 0]
-    for a in unmapped:
-        ask_mapping(a, gl[a]["name"])
+    # Unknown accounts are NOT a stop: they post to PLACEHOLDER with CHECK in the
+    # description and a loud flag, so the file is always produced.
+
+
+PLACEHOLDER = ("3001 Revenue", "CHECK")
 
 
 def load_extra_accounts(folder):
+    """extra_accounts.json lets Imran add mappings in Notepad without touching code:
+       {"4550": {"qbo": "3022 Revenue - Firewood", "prefix": "Firewood"}}"""
     p = os.path.join(folder, EXTRA_ACCOUNTS_FILE)
     if os.path.exists(p):
         with open(p) as f:
             for k, v in json.load(f).items():
                 ACCOUNTS[k] = (v["qbo"], v.get("prefix"))
-
-
-def ask_mapping(acct, name):
-    """New GL account: ask in the window, remember the answer in extra_accounts.json."""
-    if not sys.stdin.isatty():
-        raise Stop(f"Unmapped GL account: {acct} - {name}. Ask Imran which QBO account it maps to.")
-    print()
-    print(f"NEW ACCOUNT on today's report: {acct} - {name}")
-    print("Type the QuickBooks account exactly as it appears in QBO, e.g.  3001 Revenue")
-    print("(press Enter with nothing to stop and decide later)")
-    qbo = input("QuickBooks account: ").strip()
-    if not qbo:
-        raise Stop(f"Unmapped GL account {acct} - {name}. Nothing saved; run again when you know the account.")
-    prefix = input(f"Description prefix [{name}]: ").strip() or name
-    if "," in qbo or "," in prefix:
-        raise Stop("No commas allowed in the account name or prefix.")
-    ACCOUNTS[acct] = (qbo, prefix)
-    p = os.path.join(ask_mapping.folder, EXTRA_ACCOUNTS_FILE)
-    data = {}
-    if os.path.exists(p):
-        with open(p) as f:
-            data = json.load(f)
-    data[acct] = {"name": name, "qbo": qbo, "prefix": prefix}
-    with open(p, "w") as f:
-        json.dump(data, f, indent=2)
-    print(f"Saved: {acct} {name} -> {qbo} (prefix '{prefix}'). To change it later edit {EXTRA_ACCOUNTS_FILE}.")
-    print()
 
 
 # ------------------------------------------------------------------- build
@@ -245,16 +221,17 @@ def build_lines(gl, tb, memo, flags):
     # Tenders. GL Summary sign: positive = net debit, parentheses = net credit.
     if BANK in gl:
         seen = {d: amt for d, _, amt in gl[BANK]["items"]}
-        unknown = [d for d in seen if d not in TENDERS]
-        if unknown:
-            raise Stop(f"Unknown tender type(s) under 1060: {unknown}")
         net = Decimal(0)
-        for t in TENDER_ORDER:
+        for t in TENDER_ORDER + [d for d in seen if d not in TENDERS]:
             amt = seen.get(t)
             if amt is None or amt == 0:
                 continue
             net += amt
-            acct, prefix = TENDERS[t]
+            if t in TENDERS:
+                acct, prefix = TENDERS[t]
+            else:
+                acct, prefix = "1007 Visa / Mstrcrd / Debit Receivable", f"CHECK unknown tender {t}"
+                flags.append(f"CHECK: unknown tender '{t}' {amt} posted to 1007. Fix the line in QBO if wrong.")
             if amt > 0:
                 add(acct, "debit", amt, prefix)
             else:
@@ -263,40 +240,41 @@ def build_lines(gl, tb, memo, flags):
         if net != tb[BANK]["group"]:
             raise Stop(f"Tender lines net to {net} but Trial Balance 1060 total is {tb[BANK]['group']}.")
 
-    # CAMIS class-split checks.
+    # CAMIS class-split: only the exact item under 4130/4140 moves to the Parks class.
     camis_amount = Decimal(0)
-    for a in gl:
-        for desc, _, amt in gl[a]["items"]:
-            if desc == CAMIS_DESC and a in (CAMIS_ACCOUNT, "4140"):
-                camis_amount += amt
-            elif a == CAMIS_ACCOUNT or (a == "4140" and "additional party" in desc.lower()):
-                raise Stop(f"Item '{desc}' under account {a} looks like the CAMIS class-split "
-                           f"case but is not an exact match to '{CAMIS_DESC}' under 4130/4140. Ask Imran.")
+    for a in ("4140", CAMIS_ACCOUNT):
+        for desc, _, amt in gl.get(a, {}).get("items", []):
+            if desc == CAMIS_DESC:
+                camis_amount += abs(amt)
 
     # Every other account, side straight from the TB.
     for a in [x for x in tb if x != BANK]:
-        if a not in ACCOUNTS and a != CAMIS_ACCOUNT:
-            flags.append(f"Zero-dollar category omitted: {a} {tb[a]['name']} (not in the account list)")
+        side, amt = side_of(tb[a])
+        if amt == 0:
+            flags.append(f"Zero-dollar category omitted: {a} {tb[a]['name']}")
             continue
         if a == CAMIS_ACCOUNT:
-            side, amt = side_of(tb[a])
-            add("3033 Camping", side, amt, "Camping", cls=CLASS_CAMIS)
+            rest = amt - camis_amount
+            if camis_amount:
+                add("3033 Camping", side, camis_amount, "Camping", cls=CLASS_CAMIS)
+                flags.append(f"CAMIS: {camis_amount} posted to 3033 Camping class {CLASS_CAMIS}")
+            if rest:
+                add(PLACEHOLDER[0], side, rest, f"CHECK {tb[a]['name']}")
+                items = ", ".join(d for d, _, _ in gl[a]["items"] if d != CAMIS_DESC)
+                flags.append(f"CHECK: {a} {tb[a]['name']} {rest} ({items}) posted to {PLACEHOLDER[0]} as a placeholder. Fix the line in QBO.")
+            continue
+        if a not in ACCOUNTS:
+            add(PLACEHOLDER[0], side, amt, f"CHECK {tb[a]['name']}")
+            flags.append(f"CHECK: unknown account {a} {tb[a]['name']} {amt} posted to {PLACEHOLDER[0]} as a placeholder. "
+                         f"Fix the line in QBO, or add it to {EXTRA_ACCOUNTS_FILE} to make it permanent.")
             continue
         qbo, prefix = ACCOUNTS[a]
-        side, amt = side_of(tb[a])
         if a == "4140" and camis_amount:
             # split the CAMIS sub-item out of the Camping total
             # Both parts take the TB side; magnitude of the CAMIS item comes from the GL Summary.
-            camis = abs(camis_amount)
-            rest = amt - camis
-            if rest < 0:
-                raise Stop(f"CAMIS item {camis} exceeds the Camping total {amt}. Ask Imran.")
-            add(qbo, side, rest, prefix, net_refund=(side == "debit"))
-            add(qbo, side, camis, prefix, cls=CLASS_CAMIS, net_refund=(side == "debit"))
+            add(qbo, side, amt - camis_amount, prefix, net_refund=(side == "debit"))
+            add(qbo, side, camis_amount, prefix, cls=CLASS_CAMIS, net_refund=(side == "debit"))
             flags.append(f"CAMIS split: {camis_amount} of Camping posted to class {CLASS_CAMIS}")
-            continue
-        if amt == 0:
-            flags.append(f"Zero-dollar category omitted: {a} {gl[a]['name']}")
             continue
         is_rev = a.startswith("4")
         nr = is_rev and side == "debit"
@@ -404,7 +382,6 @@ def main(argv=None):
 
     flags = []
     load_extra_accounts(args.out_dir)
-    ask_mapping.folder = args.out_dir
     try:
         if not args.gl_pdf:
             args.gl_pdf = newest("GLSummary*.pdf", args.out_dir)
@@ -445,8 +422,10 @@ def main(argv=None):
     print(f"Wrote {out}")
     print(f"Journal JJ{journal_no}  Date {date.strftime('%d-%m-%Y')}  Lines {len(lines)}")
     print(f"Debits {dr:.2f}  Credits {cr:.2f}  Balanced: YES (matches Trial Balance total)")
+    if any(f.startswith("CHECK") for f in flags):
+        print("\n*** CHECK LINES IN THIS FILE: some amounts went to a placeholder account. See flags. ***")
     print("\nFlags / Things to look out for:")
-    loud = [f for f in flags if f.startswith(("NET REFUND", "Journal number gap", "Sign flip", "CAMIS"))]
+    loud = [f for f in flags if f.startswith(("CHECK", "NET REFUND", "Journal number gap", "Sign flip", "CAMIS"))]
     quiet = [f for f in flags if f not in loud]
     for f in loud + quiet:
         print(f"  - {f}")
