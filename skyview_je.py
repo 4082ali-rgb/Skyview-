@@ -11,9 +11,11 @@ Needs no AI. On anything it is not sure about it prints "STOP:" and exits 2.
 """
 import argparse
 import csv
+import glob
 import json
 import os
 import re
+import shutil
 import sys
 from datetime import datetime
 from decimal import Decimal
@@ -362,31 +364,43 @@ def pick_journal(args, state, flags):
 
 
 def newest(pattern, folder):
-    import glob
     files = glob.glob(os.path.join(folder, pattern))
     if not files:
         raise Stop(f"No file matching {pattern} in {os.path.abspath(folder)}. Put today's PDF there.")
     return max(files, key=os.path.getmtime)
 
 
+def pick_search_dir(inbox):
+    """Prefer the inbox/ folder if it has either PDF; fall back to the project root so dropping
+    PDFs straight into the folder (the old way) still works untouched."""
+    if os.path.isdir(inbox) and (glob.glob(os.path.join(inbox, "GLSummary*.pdf"))
+                                  or glob.glob(os.path.join(inbox, "TrialBalance*.pdf"))):
+        return inbox
+    return "."
+
+
 # --------------------------------------------------------------------- main
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("gl_pdf", nargs="?", help="GL Summary PDF (default: newest GLSummary*.pdf here)")
-    ap.add_argument("tb_pdf", nargs="?", help="Trial Balance PDF (default: newest TrialBalance*.pdf here)")
+    ap.add_argument("gl_pdf", nargs="?", help="GL Summary PDF (default: newest GLSummary*.pdf in inbox/, or here)")
+    ap.add_argument("tb_pdf", nargs="?", help="Trial Balance PDF (default: newest TrialBalance*.pdf in inbox/, or here)")
     ap.add_argument("--journal", type=int, help="journal number, digits only (e.g. 3528)")
     ap.add_argument("--auto", action="store_true", help="turn on auto-increment from now on")
-    ap.add_argument("--out-dir", default=".")
+    ap.add_argument("--inbox", default="inbox", help="folder to look for the two PDFs in when not given explicitly")
+    ap.add_argument("--out-dir", default="output", help="folder the CSV is written to")
+    ap.add_argument("--config-dir", default=".", help="folder extra_accounts.json lives in (ADD ACCOUNT writes here)")
     ap.add_argument("--state", default=STATE_FILE)
     args = ap.parse_args(argv)
 
     flags = []
-    load_extra_accounts(args.out_dir)
+    load_extra_accounts(args.config_dir)
     try:
+        auto_discovered = not args.gl_pdf and not args.tb_pdf
+        search_dir = pick_search_dir(args.inbox)
         if not args.gl_pdf:
-            args.gl_pdf = newest("GLSummary*.pdf", args.out_dir)
+            args.gl_pdf = newest("GLSummary*.pdf", search_dir)
         if not args.tb_pdf:
-            args.tb_pdf = newest("TrialBalance*.pdf", args.out_dir)
+            args.tb_pdf = newest("TrialBalance*.pdf", search_dir)
         print(f"Using {os.path.basename(args.gl_pdf)} and {os.path.basename(args.tb_pdf)}")
         gl_date, gl = parse_gl_summary(pdf_text(args.gl_pdf))
         tb_date, tb, tb_totals = parse_trial_balance(pdf_text(args.tb_pdf))
@@ -408,8 +422,13 @@ def main(argv=None):
                 state.setdefault("last_sides", {})[key] = side
         dr, cr = balance(lines, tb_totals[0])
 
+        os.makedirs(args.out_dir, exist_ok=True)
         out = os.path.join(args.out_dir, f"JJ{journal_no}_Skyview_{date.strftime('%b%d')}.csv")
         write_csv(out, lines, journal_no, date, memo)
+        if auto_discovered and search_dir == args.inbox:
+            # Move the used PDFs out of the inbox so a re-run doesn't pick up stale files.
+            for src in (args.gl_pdf, args.tb_pdf):
+                shutil.move(src, os.path.join(args.out_dir, os.path.basename(src)))
     except Stop as e:
         print(f"STOP: {e}")
         print("Nothing was written. Fix the input or ask Imran, then rerun.")

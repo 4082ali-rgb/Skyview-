@@ -3,14 +3,19 @@
 One-time: install Python from https://www.python.org/downloads/ (tick "Add python.exe to PATH"), then double-click **SETUP**.
 
 Every day:
-1. Download the GL Summary and Trial Balance PDFs into this folder.
+1. Download the GL Summary and Trial Balance PDFs into the `inbox` folder.
 2. Double-click **RUN**.
 3. First time it asks for the journal number. After that it counts up by itself and tells you the number it used.
-4. Import the `JJ####_Skyview_MonDD.csv` it creates into QuickBooks.
+4. The CSV lands in `output/` as `JJ####_Skyview_MonDD.csv` - import that into QuickBooks. The two
+   PDFs move there too, so `inbox` is empty and ready for tomorrow.
 
 If it says `STOP:` nothing was written. Read the message, fix the input, and run again.
 
 To change the journal number: double-click **SET JOURNAL NUMBER**, type the number the next entry should use, Enter.
+
+To make it stop counting up and ask you fresh next time: double-click **RESET JOURNAL NUMBER**,
+type `YES` to confirm. (It won't clear anything unless you type that exact word - a stray click
+can't wipe it.)
 
 If something on the report is not recognised (a new account, an unknown tender, an unusual CAMIS item), the file is still written. That amount goes to `3001 Revenue` with **CHECK** at the start of the description, and the window prints a CHECK flag. Fix that one line in QuickBooks after import.
 
