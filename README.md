@@ -6,8 +6,9 @@ Every day:
 1. Download the GL Summary and Trial Balance PDFs into the `inbox` folder.
 2. Double-click **RUN**.
 3. First time it asks for the journal number. After that it counts up by itself and tells you the number it used.
-4. The CSV lands in `output/` as `JJ####_Skyview_MonDD.csv` - import that into QuickBooks. The two
-   PDFs move there too, so `inbox` is empty and ready for tomorrow.
+4. The CSV lands in `output/YYYY-MM-DD/` (the report's own date) as `JJ####_Skyview_MonDD.csv` -
+   import that into QuickBooks. The two PDFs move into that same dated folder too, so `inbox` is
+   empty and ready for tomorrow, and every day's CSV and source PDFs stay together in one place.
 
 If it says `STOP:` nothing was written. Read the message, fix the input, and run again.
 
@@ -21,7 +22,7 @@ If something on the report is not recognised (a new account, an unknown tender, 
 
 To make a new account permanent, double-click **ADD ACCOUNT** and answer the three questions. (It writes `extra_accounts.json`, which looks like this:)
 
-    {"4550": {"qbo": "3022 Revenue - Firewood", "prefix": "Firewood"}}
+    {"4560": {"qbo": "3023 Revenue - Bundled Wood", "prefix": "Bundled Wood"}}
 
 The `qbo` name must match the QuickBooks Chart of Accounts exactly.
 

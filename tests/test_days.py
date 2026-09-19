@@ -22,5 +22,7 @@ def test_day(day, tmp_path):
                         "--out-dir", str(tmp_path), "--state", str(tmp_path / "state.json")],
                        capture_output=True, text=True)
     assert r.returncode == 0, r.stdout
-    out = tmp_path / os.path.basename(expected).replace("expected_", "")
-    assert out.read_bytes() == open(expected, "rb").read()
+    csv_name = os.path.basename(expected).replace("expected_", "")
+    matches = glob.glob(str(tmp_path / "*" / csv_name))
+    assert matches, f"{csv_name} not found under any dated folder in {tmp_path}: {r.stdout}"
+    assert open(matches[0], "rb").read() == open(expected, "rb").read()

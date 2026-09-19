@@ -44,6 +44,7 @@ ACCOUNTS = {
     "4300": ("3001 Revenue", "Cancellation Fees"),
     "4400": ("3001 Revenue", "Reservation Fee"),
     "4500": ("6007 Utilities (DS)", "BC Hydro"),
+    "4550": ("4003 Firewood", "Firewood"),
 }
 BANK = "1060"
 TENDERS = {  # GL tender name -> (QBO account, description prefix)
@@ -422,13 +423,18 @@ def main(argv=None):
                 state.setdefault("last_sides", {})[key] = side
         dr, cr = balance(lines, tb_totals[0])
 
-        os.makedirs(args.out_dir, exist_ok=True)
-        out = os.path.join(args.out_dir, f"JJ{journal_no}_Skyview_{date.strftime('%b%d')}.csv")
+        # Everything for this day lands in its own dated folder: output/YYYY-MM-DD/
+        day_dir = os.path.join(args.out_dir, date.isoformat())
+        os.makedirs(day_dir, exist_ok=True)
+        out = os.path.join(day_dir, f"JJ{journal_no}_Skyview_{date.strftime('%b%d')}.csv")
         write_csv(out, lines, journal_no, date, memo)
         if auto_discovered and search_dir == args.inbox:
-            # Move the used PDFs out of the inbox so a re-run doesn't pick up stale files.
+            # Move the used PDFs out of the inbox into that same dated folder so a
+            # re-run doesn't pick them up again, and everything for the day stays together.
             for src in (args.gl_pdf, args.tb_pdf):
-                shutil.move(src, os.path.join(args.out_dir, os.path.basename(src)))
+                dst = os.path.join(day_dir, os.path.basename(src))
+                if os.path.abspath(src) != os.path.abspath(dst):
+                    shutil.move(src, dst)
     except Stop as e:
         print(f"STOP: {e}")
         print("Nothing was written. Fix the input or ask Imran, then rerun.")
