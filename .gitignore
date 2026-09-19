@@ -3,3 +3,7 @@ skyview_je_state.json
 !tests/**/*.csv
 __pycache__/
 .pytest_cache/
+inbox/*.pdf
+output/*
+!inbox/README.md
+!output/README.md
