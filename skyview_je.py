@@ -245,7 +245,7 @@ def build_lines(gl, tb, memo, flags):
 
     # CAMIS class-split: only the exact item under 4130/4140 moves to the Parks class.
     camis_amount = Decimal(0)
-    for a in ("4140", CAMIS_ACCOUNT):
+    for a in ("4140",):
         for desc, _, amt in gl.get(a, {}).get("items", []):
             if desc == CAMIS_DESC:
                 camis_amount += abs(amt)
@@ -257,14 +257,11 @@ def build_lines(gl, tb, memo, flags):
             flags.append(f"Zero-dollar category omitted: {a} {tb[a]['name']}")
             continue
         if a == CAMIS_ACCOUNT:
-            rest = amt - camis_amount
-            if camis_amount:
-                add("3033 Camping", side, camis_amount, "Camping", cls=CLASS_CAMIS)
-                flags.append(f"CAMIS: {camis_amount} posted to 3033 Camping class {CLASS_CAMIS}")
-            if rest:
-                add(PLACEHOLDER[0], side, rest, f"CHECK {tb[a]['name']}")
-                items = ", ".join(d for d, _, _ in gl[a]["items"] if d != CAMIS_DESC)
-                flags.append(f"CHECK: {a} {tb[a]['name']} {rest} ({items}) posted to {PLACEHOLDER[0]} as a placeholder. Fix the line in QBO.")
+            # All CAMIS park-system fees (4130) go to 3033 Camping under the Manning Parks class.
+            add("3033 Camping", side, amt, "Camis Camping Fees", cls=CLASS_CAMIS,
+                net_refund=(side == "debit"))
+            items = ", ".join(d for d, _, _ in gl[a]["items"])
+            flags.append(f"CAMIS: {amt} ({items}) posted to 3033 Camping class {CLASS_CAMIS}")
             continue
         if a not in ACCOUNTS:
             add(PLACEHOLDER[0], side, amt, f"CHECK {tb[a]['name']}")
