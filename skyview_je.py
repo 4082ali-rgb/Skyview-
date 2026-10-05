@@ -257,11 +257,10 @@ def build_lines(gl, tb, memo, flags):
             flags.append(f"Zero-dollar category omitted: {a} {tb[a]['name']}")
             continue
         if a == CAMIS_ACCOUNT:
-            # All CAMIS park-system fees (4130) go to 3033 Camping under the Manning Parks class.
-            add("3033 Camping", side, amt, "Camis Camping Fees", cls=CLASS_CAMIS,
-                net_refund=(side == "debit"))
+            # All CAMIS park-system fees (4130) go to 3033 Camping under the Skyview class.
+            add("3033 Camping", side, amt, "Camis Camping Fees", net_refund=(side == "debit"))
             items = ", ".join(d for d, _, _ in gl[a]["items"])
-            flags.append(f"CAMIS: {amt} ({items}) posted to 3033 Camping class {CLASS_CAMIS}")
+            flags.append(f"CAMIS: {amt} ({items}) posted to 3033 Camping class {CLASS_DEFAULT}")
             continue
         if a not in ACCOUNTS:
             add(PLACEHOLDER[0], side, amt, f"CHECK {tb[a]['name']}")
