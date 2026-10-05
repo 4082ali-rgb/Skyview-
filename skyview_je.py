@@ -44,7 +44,7 @@ ACCOUNTS = {
     "4300": ("3001 Revenue", "Cancellation Fees"),
     "4400": ("3001 Revenue", "Reservation Fee"),
     "4500": ("6007 Utilities (DS)", "BC Hydro"),
-    "4550": ("3008 Revenue - Firewood", "Firewood"),
+    "4550": ("3008 Wood Sales", "Firewood"),
 }
 BANK = "1060"
 TENDERS = {  # GL tender name -> (QBO account, description prefix)
