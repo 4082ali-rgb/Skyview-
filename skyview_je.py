@@ -102,7 +102,7 @@ def parse_gl_summary(text):
     date = parse_date(text, "GL Summary")
     accounts, cur = {}, None
     hdr = re.compile(r"^(\d{4}) - (.+)$")
-    item = re.compile(r"^(.*?) Quantity: (\d+) (\(?\$[\d,]+\.\d{2}\)?)$")
+    item = re.compile(r"^(.*?) Quantity: (-?\d+) (\(?\$[\d,]+\.\d{2}\)?)$")
     total = re.compile(r"^Total Quantity: \d+ (\d{4}) - - .+ Total: (\(?\$[\d,]+\.\d{2}\)?)$")
     for line in text.splitlines():
         line = line.strip()
