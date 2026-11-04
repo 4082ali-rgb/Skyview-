@@ -1,2 +1,3 @@
 pdfplumber>=0.11
 pytest
+rapidocr_onnxruntime>=1.2.3

@@ -81,7 +81,83 @@ def money(s):
 
 def pdf_text(path):
     with pdfplumber.open(path) as pdf:
-        return "\n".join(p.extract_text() or "" for p in pdf.pages)
+        text = "\n".join(p.extract_text() or "" for p in pdf.pages)
+    if text.strip():
+        return text
+    # Image-only PDF (e.g. a printed-to-image report): read it with OCR.
+    return ocr_pdf_text(path)
+
+
+def ocr_pdf_text(path):
+    try:
+        from rapidocr_onnxruntime import RapidOCR
+    except ImportError:
+        raise Stop(f"{os.path.basename(path)} has no text layer and OCR is not installed. "
+                   "Run SETUP once (it installs rapidocr_onnxruntime), then rerun.")
+    import numpy as np
+    engine = RapidOCR()
+    pages = []
+    with pdfplumber.open(path) as pdf:
+        for page in pdf.pages:
+            base = page.to_image(resolution=300).original.convert("RGB")
+            # Sideways-printed tables (e.g. the Trial Balance) need turning.
+            # Try each orientation and keep the one that reads the most text.
+            best = None
+            for angle in (0, 90, 270):
+                img = base.rotate(angle, expand=True) if angle else base
+                result, _ = engine(np.array(img))
+                text = _ocr_lines(result or [])
+                # A correctly turned page has account rows with an amount on the same line.
+                score = sum(1 for line in text.splitlines() if OCR_ROW_LINE.search(line))
+                if best is None or score > best[0]:
+                    best = (score, text)
+            pages.append(best[1])
+    return "\n".join(pages)
+
+
+OCR_ROW_LINE = re.compile(r"\b\d{4}\b.*\(?\$[\d,]+\.\d{2}|Quantity: -?\d+ \(?\$")
+TB_ROW_TWO_AMOUNTS = re.compile(r"^(.+? \d{4}) (\(?\$[\d,]+\.\d{2}\)?) (\(?\$[\d,]+\.\d{2}\)?)$")
+
+
+def _repair_tb_row(text):
+    """OCR often drops a dash in an empty Debits/Credits cell. The report's own
+    rule is Group = Debits - Credits, so the sign of the Group total tells which
+    cell is the one with the amount: positive means Debits, negative means Credits.
+    The builder still checks every total against the trial balance footer."""
+    m = TB_ROW_TWO_AMOUNTS.match(text)
+    if not m:
+        return text
+    first, group = m.group(2), m.group(3)
+    if group.startswith("("):  # negative group -> the amount is a credit
+        return f"{m.group(1)} - {first} {group}"
+    return f"{m.group(1)} {first} - {group}"
+
+
+def _ocr_lines(boxes):
+    """Group OCR word boxes into text lines, top to bottom, left to right."""
+    words = []
+    for box, text, _conf in boxes:
+        ys = [p[1] for p in box]
+        xs = [p[0] for p in box]
+        words.append({"text": text.strip(), "x": min(xs), "y": (min(ys) + max(ys)) / 2,
+                      "h": max(ys) - min(ys)})
+    words.sort(key=lambda w: w["y"])
+    lines, cur = [], []
+    for w in words:
+        if cur and abs(w["y"] - cur[-1]["y"]) > max(w["h"], cur[-1]["h"]) * 0.5:
+            lines.append(cur)
+            cur = []
+        cur.append(w)
+    if cur:
+        lines.append(cur)
+    out = []
+    for line in lines:
+        line.sort(key=lambda w: w["x"])
+        text = " ".join(w["text"] for w in line if w["text"])
+        # OCR often drops the colon in "Total: $x" and "Total Quantity: n".
+        text = re.sub(r"Total(?=\s+\(?\$)", "Total:", text)
+        out.append(_repair_tb_row(text))
+    return "\n".join(out)
 
 
 # ------------------------------------------------------------------ parsing
